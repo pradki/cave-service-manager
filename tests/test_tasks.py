@@ -47,33 +47,38 @@ triggered, reason = furnace_overheat_protect.check(
     {"furnace_temp": 65.0, "furnace_temp_setpoint": None}, CFG2)
 check("brak zadanej -> też nieaktywne (nie zgadujemy)", triggered is False)
 
-# --- cwu_reserve_protect ------------------------------------------------------
+# --- cwu_reserve_protect: dhw_temp i furnace_enable z heating-controller,
+# nie lokalna konfiguracja (CONFIG tego zadania jest puste) ------------------
 
-CFG3 = {"furnace_min": 55.0, "reserve_min": 45.0}
+CFG3 = {}
 
 triggered, reason = cwu_reserve_protect.check(
-    {"furnace_temp": 60.0, "buff_top_temp": 40.0, "buff_upmid_temp": 50.0}, CFG3)
-check("piec ma z czego grzać, góra bufora niska -> aktywne", triggered is True)
+    {"furnace_enable": True, "dhw_temp": 55.0, "buff_top_temp": 40.0, "buff_upmid_temp": 60.0}, CFG3)
+check("piec włączony, góra bufora poniżej nastawy CWU -> aktywne", triggered is True)
 check("powód wymienia tylko niski czujnik (góra), nie oba", "góra" in reason and "śr.góra" not in reason)
 
 triggered, reason = cwu_reserve_protect.check(
-    {"furnace_temp": 60.0, "buff_top_temp": 40.0, "buff_upmid_temp": 42.0}, CFG3)
-check("oba górne czujniki niskie -> aktywne, oba wymienione w powodzie",
+    {"furnace_enable": True, "dhw_temp": 55.0, "buff_top_temp": 40.0, "buff_upmid_temp": 42.0}, CFG3)
+check("oba górne czujniki poniżej nastawy -> aktywne, oba wymienione w powodzie",
       triggered is True and "góra" in reason and "śr.góra" in reason)
 
 triggered, reason = cwu_reserve_protect.check(
-    {"furnace_temp": 60.0, "buff_top_temp": 50.0, "buff_upmid_temp": 50.0}, CFG3)
-check("rezerwa OK (oba >= minimum) -> nieaktywne", triggered is False)
+    {"furnace_enable": True, "dhw_temp": 55.0, "buff_top_temp": 60.0, "buff_upmid_temp": 60.0}, CFG3)
+check("rezerwa OK (oba >= nastawy CWU) -> nieaktywne", triggered is False)
 check("powód mówi 'OK'", "OK" in reason)
 
 triggered, reason = cwu_reserve_protect.check(
-    {"furnace_temp": 50.0, "buff_top_temp": 30.0, "buff_upmid_temp": 30.0}, CFG3)
-check("piec za zimny (poniżej furnace_min) -> NIE aktywne mimo niskiej rezerwy",
+    {"furnace_enable": False, "dhw_temp": 55.0, "buff_top_temp": 30.0, "buff_upmid_temp": 30.0}, CFG3)
+check("piec WYŁĄCZONY -> NIE aktywne mimo niskiej rezerwy (nie ma czym dogrzać)",
       triggered is False)
-check("powód mówi, że piec za zimny", "za zimno" in reason)
+check("powód mówi, że piec wyłączony", "wyłączony" in reason)
 
 triggered, reason = cwu_reserve_protect.check(
-    {"furnace_temp": None, "buff_top_temp": 30.0, "buff_upmid_temp": 30.0}, CFG3)
-check("brak odczytu pieca -> nieaktywne, nie wyjątek", triggered is False)
+    {"furnace_enable": True, "dhw_temp": 55.0, "buff_top_temp": None, "buff_upmid_temp": 30.0}, CFG3)
+check("brak odczytu bufora -> nieaktywne, nie wyjątek", triggered is False)
+
+triggered, reason = cwu_reserve_protect.check(
+    {"furnace_enable": True, "dhw_temp": None, "buff_top_temp": 30.0, "buff_upmid_temp": 30.0}, CFG3)
+check("brak nastawy CWU (dhw_temp) -> nieaktywne, nie zgadujemy progu", triggered is False)
 
 done()

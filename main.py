@@ -14,10 +14,19 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 LOG = logging.getLogger("main")
 
 # Prawdziwe czujniki (TTL skończone - milczenie realnie znaczy "martwy
-# czujnik", patrz params.py). furnace_temp_setpoint NIE jest tu - to nastawa
-# z innej usługi (heating-controller), czytana tak samo jak nastawy zadań
-# poniżej (nieskończone TTL).
+# czujnik", patrz params.py).
 SENSOR_NAMES = ("buff_top_temp", "buff_upmid_temp", "furnace_temp")
+
+# Nastawy z INNEJ usługi (heating-controller) - tylko odczyt, nieskończone TTL
+# (patrz params.py), `default=None` celowo: "nigdy nie przyszło" musi dać
+# wprost "brak danych" do check(), nie jakąś liczbową wartość, która
+# wyglądałaby jak realna nastawa i mogłaby fałszywie wyzwolić zadanie.
+# (nazwa w `sensors`/`read_inputs()`, atrybut configu z topicem)
+EXTERNAL_SETPOINTS = (
+    ("furnace_temp_setpoint", "FURNACE_TEMP_SETPOINT_TOPIC"),
+    ("furnace_enable", "FURNACE_ENABLE_TOPIC"),
+    ("dhw_temp", "DHW_TEMP_SETPOINT_TOPIC"),
+)
 
 
 class TaskRuntime:
@@ -51,12 +60,14 @@ class TaskRuntime:
 
 def read_inputs(sensors: dict) -> dict:
     """Wartości do `check()` - czujniki jako None, gdy nieważne (nie jako
-    domyślne 0.0, co wyglądałoby jak realny odczyt zera - patrz params.py),
-    nastawa pieca normalnie (jej `default` to świadomy wybór, nie "brak
-    danych")."""
+    domyślne 0.0, co wyglądałoby jak realny odczyt zera - patrz params.py).
+    Nastawy zewnętrzne (heating-controller) mają `default=None` wprost w
+    swoim Param (patrz EXTERNAL_SETPOINTS), więc `.value` już daje właściwą
+    odpowiedź bez dodatkowego rozróżniania tutaj."""
     values = {name: (sensors[name].value if sensors[name].valid else None)
              for name in SENSOR_NAMES}
-    values["furnace_temp_setpoint"] = sensors["furnace_temp_setpoint"].value
+    for name, _cfg_attr in EXTERNAL_SETPOINTS:
+        values[name] = sensors[name].value
     return values
 
 
@@ -65,10 +76,12 @@ def build_service(cfg=config):
     startuje wątek MQTT i pętlę. Rozdzielone, żeby dało się sprawdzić samo
     spięcie (topici, zadania, kompletność configu) bez brokera."""
     sensors = {name: Param(name, ttl=cfg.SENSOR_TTL) for name in SENSOR_NAMES}
-    sensors["furnace_temp_setpoint"] = Param("furnace_temp_setpoint", ttl=cfg.SETPOINT_TTL)
+    for name, _cfg_attr in EXTERNAL_SETPOINTS:
+        sensors[name] = Param(name, ttl=cfg.SETPOINT_TTL, default=None)
 
     param_topics = {f"{cfg.SENSOR_TOPIC_ROOT}/{name}": sensors[name] for name in SENSOR_NAMES}
-    param_topics[cfg.FURNACE_TEMP_SETPOINT_TOPIC] = sensors["furnace_temp_setpoint"]
+    for name, cfg_attr in EXTERNAL_SETPOINTS:
+        param_topics[getattr(cfg, cfg_attr)] = sensors[name]
 
     task_runtimes = []
     for mod in tasks.TASKS:

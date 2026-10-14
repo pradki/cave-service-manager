@@ -13,6 +13,8 @@ MQTT_CLIENT_ID = "cave-service-manager"
 # === Wejścia: czujniki i nastawy innych usług (tylko odczyt) ===
 SENSOR_TOPIC_ROOT = "cave/sensors/temperature"
 FURNACE_TEMP_SETPOINT_TOPIC = "cave/heating/setpoints/furnace_temp"
+FURNACE_ENABLE_TOPIC = "cave/heating/setpoints/furnace_enable"
+DHW_TEMP_SETPOINT_TOPIC = "cave/heating/setpoints/dhw_temp"
 
 # Czujniki republikują co kilkanaście sekund - zwykły, skończony TTL ma sens
 # (martwy czujnik ma realnie "zgasnąć"). Nastawa (furnace_temp_setpoint) jest

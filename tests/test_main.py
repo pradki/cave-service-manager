@@ -15,7 +15,7 @@ config = importlib.util.module_from_spec(spec)
 sys.modules["config"] = config
 spec.loader.exec_module(config)
 
-from main import TaskRuntime, read_inputs, tick  # noqa: E402  (po podstawieniu configu)
+from main import EXTERNAL_SETPOINTS, TaskRuntime, read_inputs, tick  # noqa: E402
 from params import Param  # noqa: E402
 from relay_client import PumpRelay  # noqa: E402
 from tasks import buffer_top_redistribute, furnace_overheat_protect  # noqa: E402
@@ -25,7 +25,8 @@ SENSOR_NAMES = ("buff_top_temp", "buff_upmid_temp", "furnace_temp")
 
 def build(buff_top=None, furnace=None, furnace_setpoint=None):
     sensors = {name: Param(name, ttl=120.0) for name in SENSOR_NAMES}
-    sensors["furnace_temp_setpoint"] = Param("furnace_temp_setpoint", ttl=float("inf"))
+    for name, _cfg_attr in EXTERNAL_SETPOINTS:
+        sensors[name] = Param(name, ttl=float("inf"), default=None)
     if buff_top is not None:
         sensors["buff_top_temp"].update(buff_top)
     if furnace is not None:
@@ -46,14 +47,15 @@ def build(buff_top=None, furnace=None, furnace_setpoint=None):
     return sensors, task_runtimes, pump, pub
 
 
-# --- read_inputs: czujniki None gdy nieważne, nastawa normalnie -------------
+# --- read_inputs: czujniki None gdy nieważne, nastawy zewnętrzne None, dopóki
+# nic nie przyszło (nie jakaś licząca się liczba - patrz main.py) -----------
 
 sensors, _, _, _ = build()
 inputs = read_inputs(sensors)
 check("świeże czujniki (nic nie przyszło) -> None, nie 0.0",
       all(inputs[name] is None for name in SENSOR_NAMES))
-check("nastawa pieca -> jej default (0.0), to świadomy wybór, nie 'brak danych'",
-      inputs["furnace_temp_setpoint"] == 0.0)
+check("świeże nastawy zewnętrzne -> też None, nie jakaś domyślna liczba",
+      all(inputs[name] is None for name, _ in EXTERNAL_SETPOINTS))
 
 # --- tick: żadne zadanie nie aktywne -> pompa nie pingowana -----------------
 

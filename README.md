@@ -35,13 +35,21 @@ touching that service's main control loop every time. Here, a new reason is a ne
 |------|-----------|-----|
 | `buffer_top_redistribute` | `buff_top_temp > threshold` (65°C) | Without the pump, the furnace's heat only ever reaches the top of the buffer tank - this spreads it to the lower layers instead of just overheating the top. |
 | `furnace_overheat_protect` | `furnace_temp > furnace_temp_setpoint + margin` (10°C) | Typically right after adding wood; moves the excess into the buffer before the furnace's own independent hard safety limit (`MAX_FURNACE_TEMP` in `heating-controller`) would have to. |
-| `cwu_reserve_protect` | `furnace_temp >= furnace_min` (55°C) **and** (`buff_top_temp < reserve_min` **or** `buff_upmid_temp < reserve_min`) (45°C) | The top of the buffer is the reserve DHW draws from; if it's dropping and the furnace still has heat to give, push some up before the reserve actually runs short. Doesn't fire if the furnace itself is too cold to help - that would just move cold water around. |
+| `cwu_reserve_protect` | `furnace_enable` (from `heating-controller`) **and** (`buff_top_temp < dhw_temp` **or** `buff_upmid_temp < dhw_temp`), `dhw_temp` also from `heating-controller` | The top of the buffer is the reserve DHW draws from; if either sensor drops below `heating-controller`'s own DHW setpoint, push heat up from the furnace before the reserve actually runs short. Gated on the furnace being *switched on*, not on its current temperature - a furnace that's lit but still warming up has every reason to help even before it individually clears some arbitrary minimum; one that's off has nothing to give regardless of what the buffer reads. No config of its own - both thresholds are `heating-controller`'s, not this service's to duplicate. |
 
 The first two used to live in `heating-controller/heating.py`'s `pump_boiler_ctrl()` - moved here
 unchanged in behaviour (same thresholds, same defaults), just split into their own files and made
 individually configurable. `heating-controller` no longer runs that task at all
 (`PUMP_BOILER_CTRL_ENABLED = False` in its `config.py`) - running both would mean two services
 independently deciding when to pulse the same relay, each unaware of the other.
+
+`cwu_reserve_protect` started out with its own `furnace_min`/`reserve_min` config, gating on
+`furnace_temp >= furnace_min` instead of `furnace_enable` - corrected after the buffer actually
+sat cold (top 38°C, upper-mid 33°C) with the furnace lit but not yet past that threshold, and the
+task declined to help. The furnace's *on/off* state, not its momentary temperature, is what
+actually answers "is there something to transfer" - and `heating-controller` already publishes
+exactly that, plus its own DHW minimum, so there was no reason for this task to keep a second,
+separately-configured copy of either number.
 
 Each task is a plain module under `tasks/` with four constants and one pure function - no
 class, no base type to subclass:
@@ -66,6 +74,8 @@ topic, included in the "does anything want the pump" decision, nothing else to w
 |-------|----------|-----------|
 | `cave/sensors/temperature/{buff_top_temp,buff_upmid_temp,furnace_temp}` | `value` | in - read-only |
 | `cave/heating/setpoints/furnace_temp` | `value` | in, read-only - `heating-controller`'s own furnace setpoint |
+| `cave/heating/setpoints/furnace_enable` | `value` (bool) | in, read-only - is the furnace switched on at all |
+| `cave/heating/setpoints/dhw_temp` | `value` | in, read-only - `heating-controller`'s own DHW (CWU) minimum |
 | `cave/service-manager/tasks/<task>/setpoints/enabled` | `value` (bool) | in, retained - **published** by caveweb's `/automations` |
 | `cave/service-manager/tasks/<task>/setpoints/<config key>` | `value` | in, retained - ditto, one topic per `CONFIG` entry |
 | `cave/service-manager/tasks/<task>/status` | `enabled`, `triggered`, `driving`, `reason`, `config`, `updated_at` | **out**, retained - this task's current state |

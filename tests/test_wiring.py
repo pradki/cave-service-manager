@@ -23,13 +23,18 @@ check("jedno zadanie na moduł w tasks.TASKS", len(task_runtimes) == len(tasks.T
       and [rt.module for rt in task_runtimes] == tasks.TASKS)
 check("nazwy zadań unikalne", len({rt.module.NAME for rt in task_runtimes}) == len(task_runtimes))
 
-check("subskrybujemy trzy czujniki i nastawę pieca z heating-controller",
+check("subskrybujemy trzy czujniki i trzy nastawy z heating-controller "
+      "(furnace_temp, furnace_enable, dhw_temp)",
       set(mqtt_client.param_topics) >= {
           f"{cfg.SENSOR_TOPIC_ROOT}/buff_top_temp",
           f"{cfg.SENSOR_TOPIC_ROOT}/buff_upmid_temp",
           f"{cfg.SENSOR_TOPIC_ROOT}/furnace_temp",
           cfg.FURNACE_TEMP_SETPOINT_TOPIC,
+          cfg.FURNACE_ENABLE_TOPIC,
+          cfg.DHW_TEMP_SETPOINT_TOPIC,
       })
+check("nastawy zewnętrzne mają default=None (brak danych musi być jednoznaczny)",
+      all(sensors[name].default is None for name, _ in main.EXTERNAL_SETPOINTS))
 
 for rt in task_runtimes:
     enabled_topic = f"{cfg.STATUS_TOPIC_ROOT}/tasks/{rt.module.NAME}/setpoints/enabled"
@@ -51,8 +56,8 @@ check("pompa adresuje alias i priorytet z configu",
 
 check("czujniki mają skończone TTL (martwy czujnik ma realnie zgasnąć)",
       all(sensors[name].ttl == cfg.SENSOR_TTL for name in main.SENSOR_NAMES))
-check("nastawa pieca (z innej usługi) ma nieskończone TTL",
-      sensors["furnace_temp_setpoint"].ttl == float("inf"))
+check("nastawy z innej usługi (heating-controller) mają nieskończone TTL",
+      all(sensors[name].ttl == float("inf") for name, _ in main.EXTERNAL_SETPOINTS))
 
 # Tick bez żadnych danych z czujników (nic jeszcze nie przyszło) musi się
 # zachować bezpiecznie - żadne zadanie nie aktywne, pompa nie pingowana.

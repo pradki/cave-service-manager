@@ -36,6 +36,7 @@ touching that service's main control loop every time. Here, a new reason is a ne
 | `buffer_top_redistribute` | `buff_top_temp > threshold` (65°C) | Without the pump, the furnace's heat only ever reaches the top of the buffer tank - this spreads it to the lower layers instead of just overheating the top. |
 | `furnace_overheat_protect` | `furnace_temp > furnace_temp_setpoint + margin` (10°C) | Typically right after adding wood; moves the excess into the buffer before the furnace's own independent hard safety limit (`MAX_FURNACE_TEMP` in `heating-controller`) would have to. |
 | `cwu_reserve_protect` | `furnace_enable` (from `heating-controller`) **and** (`buff_top_temp < dhw_temp` **or** `buff_upmid_temp < dhw_temp`), `dhw_temp` also from `heating-controller` | The top of the buffer is the reserve DHW draws from; if either sensor drops below `heating-controller`'s own DHW setpoint, push heat up from the furnace before the reserve actually runs short. Gated on the furnace being *switched on*, not on its current temperature - a furnace that's lit but still warming up has every reason to help even before it individually clears some arbitrary minimum; one that's off has nothing to give regardless of what the buffer reads. No config of its own - both thresholds are `heating-controller`'s, not this service's to duplicate. |
+| `pump_always_on` | always `True` | An experiment, not a real condition: keep the furnace pump running continuously (no sensor involved at all) to see whether a steadier furnace temperature - instead of the usual rest-then-overshoot cycle - lowers coal consumption. Starts **disabled** (see below) - a real condition task naturally does nothing until it occurs, but this one's "condition" is permanently true, so defaulting it on would have driven the pump non-stop from the moment this shipped. |
 
 The first two used to live in `heating-controller/heating.py`'s `pump_boiler_ctrl()` - moved here
 unchanged in behaviour (same thresholds, same defaults), just split into their own files and made
@@ -64,9 +65,15 @@ def check(sensors: dict, config: dict) -> tuple[bool, str]:
     ...  # (triggered, human-readable reason) - pure, no I/O, trivially unit-tested
 ```
 
-Adding a fourth task is: write that file, add the module to `TASKS` in `tasks/__init__.py`. The
+Adding a new task is: write that file, add the module to `TASKS` in `tasks/__init__.py`. The
 main loop (`main.tick()`) picks it up automatically - new `enabled`/config setpoints, new status
 topic, included in the "does anything want the pump" decision, nothing else to wire.
+
+A task's `enabled` setpoint defaults to `True` (`main.py:build_service()`) - reasonable for every
+task above, since each only ever does something once its real condition actually occurs. A module
+can override this with a module-level `DEFAULT_ENABLED = False` (see `pump_always_on.py`) when its
+condition is unconditional - deploying it pre-enabled would mean it starts acting the moment the
+service (re)starts, before anyone decided to turn the experiment on.
 
 ## Topics
 

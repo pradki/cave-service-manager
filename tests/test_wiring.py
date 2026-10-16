@@ -39,8 +39,9 @@ check("nastawy zewnętrzne mają default=None (brak danych musi być jednoznaczn
 for rt in task_runtimes:
     enabled_topic = f"{cfg.STATUS_TOPIC_ROOT}/tasks/{rt.module.NAME}/setpoints/enabled"
     check(f"{rt.module.NAME}: subskrybujemy jego 'enabled'", enabled_topic in mqtt_client.param_topics)
-    check(f"{rt.module.NAME}: enabled domyślnie włączone, dopóki broker nic nie powiedział",
-          rt.enabled.value is True)
+    check(f"{rt.module.NAME}: enabled domyślne zgodne z DEFAULT_ENABLED modułu "
+          "(True, chyba że moduł jawnie nadpisze - patrz pump_always_on.py)",
+          rt.enabled.value is getattr(rt.module, "DEFAULT_ENABLED", True))
     for key, _label, _data_type, _min_v, _max_v, default, _unit, _step in rt.module.CONFIG:
         topic = f"{cfg.STATUS_TOPIC_ROOT}/tasks/{rt.module.NAME}/setpoints/{key}"
         check(f"{rt.module.NAME}.{key}: subskrybowana nastawa", topic in mqtt_client.param_topics)
@@ -61,11 +62,21 @@ check("nastawy z innej usługi (heating-controller) mają nieskończone TTL",
 
 # Tick bez żadnych danych z czujników (nic jeszcze nie przyszło) musi się
 # zachować bezpiecznie - żadne zadanie nie aktywne, pompa nie pingowana.
+# pump_always_on.check() wraca True BEZWARUNKOWO (patrz jego moduł) - ten test
+# przechodzi tylko dzięki DEFAULT_ENABLED=False tego zadania, nie dzięki
+# brakowi danych z czujników jak dla reszty; gdyby ktoś kiedyś usunął ten
+# atrybut z modułu, driving_names przestałoby być puste i to by to złapało.
 pub = FakePublisher()
 driving = main.tick(sensors, task_runtimes, pump_relay, pub, cfg)
 check("na starcie, bez danych z czujników -> żadne zadanie nie jeździ", driving == [])
 check("pompa nie pingowana", pub.for_topic(pump_relay._cmd_topic()) == [])
 check("status zbiorczy opublikowany mimo braku danych",
       pub.last(f"{cfg.STATUS_TOPIC_ROOT}/status")[1]["pump_on"] is False)
+
+pump_always_on_rt = next(rt for rt in task_runtimes if rt.module.NAME == "pump_always_on")
+check("pump_always_on: triggered=True mimo to (jego check() jest bezwarunkowy)",
+      pump_always_on_rt.triggered is True)
+check("...ale enabled=False domyślnie, więc 'driving' pozostaje False",
+      bool(pump_always_on_rt.enabled.value) is False)
 
 done()

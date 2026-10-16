@@ -88,7 +88,14 @@ def build_service(cfg=config):
         for attr in tasks.REQUIRED_ATTRS:
             assert hasattr(mod, attr), f"{mod.__name__} brakuje {attr}"
 
-        enabled = Param(f"{mod.NAME}.enabled", ttl=cfg.SETPOINT_TTL, default=True)
+        # Zwykłe zadanie domyślnie startuje włączone (reaguje tylko na realny
+        # warunek, więc samo w sobie nic nie zmienia, dopóki ten warunek nie
+        # wystąpi) - ale moduł może to nadpisać `DEFAULT_ENABLED = False`
+        # (patrz tasks/pump_always_on.py), gdy jego "warunek" jest zawsze
+        # spełniony i start od razu aktywny byłby niespodzianką, nie czymś,
+        # na co ktoś świadomie się zgodził.
+        enabled = Param(f"{mod.NAME}.enabled", ttl=cfg.SETPOINT_TTL,
+                        default=getattr(mod, "DEFAULT_ENABLED", True))
         param_topics[f"{cfg.STATUS_TOPIC_ROOT}/tasks/{mod.NAME}/setpoints/enabled"] = enabled
 
         config_params = {}

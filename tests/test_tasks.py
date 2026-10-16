@@ -3,7 +3,7 @@
 #     python tests/test_tasks.py
 from fakes import check, done
 
-from tasks import buffer_top_redistribute, cwu_reserve_protect, furnace_overheat_protect
+from tasks import buffer_top_redistribute, cwu_reserve_protect, furnace_overheat_protect, pump_always_on
 
 # --- buffer_top_redistribute --------------------------------------------------
 
@@ -80,5 +80,20 @@ check("brak odczytu bufora -> nieaktywne, nie wyjątek", triggered is False)
 triggered, reason = cwu_reserve_protect.check(
     {"furnace_enable": True, "dhw_temp": None, "buff_top_temp": 30.0, "buff_upmid_temp": 30.0}, CFG3)
 check("brak nastawy CWU (dhw_temp) -> nieaktywne, nie zgadujemy progu", triggered is False)
+
+# --- pump_always_on: bezwarunkowo aktywne, zero konfiguracji/czujników -------
+
+triggered, reason = pump_always_on.check({}, {})
+check("zawsze aktywne, nawet bez żadnych czujników/configu", triggered is True)
+check("powód mówi, że to eksperyment", "eksperyment" in reason)
+
+triggered, reason = pump_always_on.check(
+    {"buff_top_temp": None, "furnace_temp": None}, {})
+check("nic nie zmienia się nawet z (pustymi) czujnikami w argumencie", triggered is True)
+
+check("domyślnie WYŁĄCZONE (inaczej od reszty zadań) - inaczej pompa ruszyłaby "
+      "bez przerwy od razu po deployu, zanim ktoś świadomie włączy eksperyment",
+      pump_always_on.DEFAULT_ENABLED is False)
+check("bez własnej konfiguracji", pump_always_on.CONFIG == [])
 
 done()
